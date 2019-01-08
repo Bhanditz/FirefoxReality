@@ -700,6 +700,7 @@ BrowserWorld::AddWidget(int32_t aHandle, const WidgetPlacementPtr& aPlacement) {
   if (aPlacement->layer && m.device) {
     layer = m.device->CreateLayerQuad(textureWidth, textureHeight,
                                       VRLayerQuad::SurfaceType::AndroidSurface);
+    layer->SetCylinder(aPlacement->cylinder);
   }
 
   if (layer) {

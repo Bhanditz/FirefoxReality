@@ -189,6 +189,7 @@ public:
   vrb::FBOPtr fbo;
   vrb::RenderContextWeak contextWeak;
   JNIEnv * jniEnv = nullptr;
+  ovrLayerCylinder2 cylinder;
 
   static OculusLayerQuadPtr Create(const VRLayerQuadPtr& aLayer) {
     auto result = std::make_shared<OculusLayerQuad>();
@@ -205,6 +206,7 @@ public:
     contextWeak = aContext;
 
     ovrLayer = vrapi_DefaultLayerProjection2();
+    cylinder = vrapi_DefaultLayerCylinder2();
     ovrLayer.Header.SrcBlend = VRAPI_FRAME_LAYER_BLEND_ONE;
     ovrLayer.Header.DstBlend = VRAPI_FRAME_LAYER_BLEND_ONE_MINUS_SRC_ALPHA;
 
@@ -226,6 +228,10 @@ public:
   }
 
   void Update(const ovrTracking2& aTracking) override {
+    if (layer->IsCylinder()) {
+      UpdateCylinder(aTracking);
+      return;
+    }
     OculusLayer::Update(aTracking);
     const float w = layer->GetWorldWidth();
     const float h = layer->GetWorldHeight();
@@ -257,6 +263,77 @@ public:
     ovrLayer.HeadPose = aTracking.HeadPose;
   }
 
+  // Assumes landscape cylinder shape.
+  static ovrMatrix4f CylinderModelMatrix( const int texWidth, const int texHeight,
+                                          const ovrVector3f translation,
+                                          const float rotateYaw,
+                                          const float rotatePitch,
+                                          const float radius,
+                                          const float density )
+  {
+    const ovrMatrix4f scaleMatrix = ovrMatrix4f_CreateScale( radius, radius * (float)texHeight * VRAPI_PI / density, radius );
+    const ovrMatrix4f transMatrix = ovrMatrix4f_CreateTranslation( translation.x, translation.y, translation.z );
+    const ovrMatrix4f rotXMatrix = ovrMatrix4f_CreateRotation( rotateYaw, 0.0f, 0.0f );
+    const ovrMatrix4f rotYMatrix = ovrMatrix4f_CreateRotation( 0.0f, rotatePitch, 0.0f );
+
+    const ovrMatrix4f m0 = ovrMatrix4f_Multiply( &transMatrix, &scaleMatrix );
+    const ovrMatrix4f m1 = ovrMatrix4f_Multiply( &rotXMatrix, &m0 );
+    const ovrMatrix4f m2 = ovrMatrix4f_Multiply( &rotYMatrix, &m1 );
+
+    return m2;
+  }
+
+  void UpdateCylinder(const ovrTracking2& aTracking) {
+    OculusLayer::Update(aTracking);
+    const float w = layer->GetWorldWidth();
+    const float h = layer->GetWorldHeight();
+
+
+
+    cylinder.HeadPose = aTracking.HeadPose;
+    cylinder.Header.SrcBlend = VRAPI_FRAME_LAYER_BLEND_ONE;
+    cylinder.Header.DstBlend = VRAPI_FRAME_LAYER_BLEND_ONE_MINUS_SRC_ALPHA;
+
+    const float density = 4500.0f;
+    const float rotateYaw = 0.0f;
+    const float rotatePitch = 0.0f;
+    const float radius = 3.0f;
+    const ovrVector3f translation = { 0.0f, 0.0f, 0.0f };
+    const float textureWidth = layer->GetWidth();
+    const float textureHeight = layer->GetHeight();
+
+    ovrMatrix4f cylinderTransform =
+        CylinderModelMatrix( textureWidth, textureHeight, translation,
+                             rotateYaw, rotatePitch, radius, density );
+
+    const float circScale = density * 0.5f / textureWidth;
+    const float circBias = -circScale * ( 0.5f * ( 1.0f - 1.0f / circScale ) );
+
+    for ( int eye = 0; eye < VRAPI_FRAME_LAYER_EYE_MAX; eye++ ) {
+      ovrMatrix4f modelViewMatrix = ovrMatrix4f_Multiply( &aTracking.Eye[eye].ViewMatrix, &cylinderTransform );
+      cylinder.Textures[eye].TexCoordsFromTanAngles = ovrMatrix4f_Inverse( &modelViewMatrix );
+      cylinder.Textures[eye].ColorSwapChain = swapChain;
+      cylinder.Textures[eye].SwapChainIndex = 0;
+
+      // Texcoord scale and bias is just a representation of the aspect ratio. The positioning
+      // of the cylinder is handled entirely by the TexCoordsFromTanAngles matrix.
+
+      const float texScaleX = circScale;
+      const float texBiasX = circBias;
+      const float texScaleY = 0.5f;
+      const float texBiasY = -texScaleY * ( 0.5f * ( 1.0f - ( 1.0f / texScaleY ) ) );
+
+      cylinder.Textures[eye].TextureMatrix.M[0][0] = texScaleX;
+      cylinder.Textures[eye].TextureMatrix.M[0][2] = texBiasX;
+      cylinder.Textures[eye].TextureMatrix.M[1][1] = texScaleY;
+      cylinder.Textures[eye].TextureMatrix.M[1][2] = texBiasY;
+
+      cylinder.Textures[eye].TextureRect.width = 1.0f;
+      cylinder.Textures[eye].TextureRect.height = 1.0f;
+    }
+
+  }
+
   void Resize() {
     if (!swapChain) {
       return;
@@ -283,6 +360,9 @@ public:
   }
 
   const ovrLayerHeader2 * Header() const override {
+    if (layer->IsCylinder()) {
+      return &cylinder.Header;
+    }
     return &ovrLayer.Header;
   }
 

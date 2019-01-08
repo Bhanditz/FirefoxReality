@@ -92,6 +92,7 @@ public:
   float GetWorldWidth() const;
   float GetWorldHeight() const;
   jobject GetSurface() const;
+  bool IsCylinder() const;
 
   // Only works with SurfaceType::FBO
   void Bind(GLenum aTarget = GL_FRAMEBUFFER);
@@ -103,6 +104,7 @@ public:
   void SetResizeDelegate(const ResizeDelegate& aDelegate);
   void SetBindDelegate(const BindDelegate& aDelegate);
   void SetSurface(jobject aSurface);
+  void SetCylinder(bool aValue);
 protected:
   struct State;
   VRLayerQuad(State& aState);

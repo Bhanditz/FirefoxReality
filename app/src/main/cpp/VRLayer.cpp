@@ -200,6 +200,7 @@ struct VRLayerQuad::State: public VRLayer::State {
   VRLayerQuad::ResizeDelegate resizeDelegate;
   VRLayerQuad::BindDelegate bindDelegate;
   jobject surface;
+  bool cylinder;
   State():
       surfaceType(VRLayerQuad::SurfaceType::AndroidSurface),
       width(0),
@@ -208,7 +209,8 @@ struct VRLayerQuad::State: public VRLayer::State {
       worldHeight(0),
       boundTarget(GL_FRAMEBUFFER),
       priority(0),
-      surface(nullptr)
+      surface(nullptr),
+      cylinder(false)
   {}
 };
 
@@ -250,6 +252,17 @@ jobject
 VRLayerQuad::GetSurface() const {
   return m.surface;
 }
+
+bool
+VRLayerQuad::IsCylinder() const {
+  return m.cylinder;
+}
+
+void
+VRLayerQuad::SetCylinder(bool aValue) {
+  m.cylinder = aValue;
+}
+
 
 void
 VRLayerQuad::Bind(GLenum aTarget) {
