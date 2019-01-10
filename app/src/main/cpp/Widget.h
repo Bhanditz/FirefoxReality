@@ -9,6 +9,7 @@
 #include "vrb/Forward.h"
 #include "vrb/MacroUtils.h"
 #include "vrb/Color.h"
+#include "DeviceDelegate.h"
 
 #include <memory>
 #include <string>
@@ -17,11 +18,14 @@
 
 namespace crow {
 
+class Cylinder;
+typedef std::shared_ptr<Cylinder> CylinderPtr;
+
+class VRLayer;
+typedef std::shared_ptr<VRLayer> VRLayerPtr;
+
 class Quad;
 typedef std::shared_ptr<Quad> QuadPtr;
-
-class VRLayerQuad;
-typedef std::shared_ptr<VRLayerQuad> VRLayerQuadPtr;
 
 class Widget;
 typedef std::shared_ptr<Widget> WidgetPtr;
@@ -31,9 +35,10 @@ typedef std::shared_ptr<WidgetPlacement> WidgetPlacementPtr;
 
 class Widget {
 public:
-  static WidgetPtr Create(vrb::RenderContextPtr& aContext, const int aHandle, const int32_t aWidth, const int32_t aHeight, float aWorldWidth);
-  static WidgetPtr Create(vrb::RenderContextPtr& aContext, const int aHandle, const VRLayerQuadPtr& aLayer, float aWorldWidth);
-  static WidgetPtr Create(vrb::RenderContextPtr& aContext, const int aHandle, const int32_t aWidth, const int32_t aHeight, const vrb::Vector& aMin, const vrb::Vector& aMax);
+  static WidgetPtr Create(vrb::RenderContextPtr& aContext, const int aHandle,
+                          const int32_t aTextureWidth, const int32_t aTextureHeight, const QuadPtr& aQuad);
+  static WidgetPtr Create(vrb::RenderContextPtr& aContext, const int aHandle,
+                          const int32_t aTextureWidth, const int32_t aTextureHeight, const CylinderPtr& aCylinder);
   uint32_t GetHandle() const;
   void ResetFirstDraw();
   const std::string& GetSurfaceTextureName() const;
@@ -52,7 +57,8 @@ public:
   bool IsVisible() const;
   vrb::NodePtr GetRoot() const;
   QuadPtr GetQuad() const;
-  const VRLayerQuadPtr& GetLayer() const;
+  CylinderPtr GetCylinder() const;
+  VRLayerSurfacePtr GetLayer() const;
   vrb::TransformPtr GetTransformNode() const;
   const WidgetPlacementPtr& GetPlacement() const;
   void SetPlacement(const WidgetPlacementPtr& aPlacement);

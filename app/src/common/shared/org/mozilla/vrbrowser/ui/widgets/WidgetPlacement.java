@@ -39,7 +39,7 @@ public class WidgetPlacement {
     public boolean showPointer = true;
     public boolean firstDraw = false;
     public boolean layer = true;
-    public boolean cylinder = false;
+    public boolean cylinder = true;
 
     public WidgetPlacement clone() {
         WidgetPlacement w = new WidgetPlacement();

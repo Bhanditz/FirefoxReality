@@ -380,9 +380,9 @@ Quad::GetTransformNode() const {
   return m.transform;
 }
 
-vrb::GeometryPtr
-Quad::GetGeometry() const {
-  return m.geometry;
+VRLayerQuadPtr
+Quad::GetLayer() const {
+  return m.layer;
 }
 
 static const float kEpsilon = 0.00000001f;

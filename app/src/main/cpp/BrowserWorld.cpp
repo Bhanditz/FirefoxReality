@@ -18,6 +18,7 @@
 #include "Pointer.h"
 #include "Widget.h"
 #include "WidgetPlacement.h"
+#include "Cylinder.h"
 #include "Quad.h"
 #include "VRBrowser.h"
 #include "VRVideo.h"
@@ -695,18 +696,26 @@ BrowserWorld::AddWidget(int32_t aHandle, const WidgetPlacementPtr& aPlacement) {
   int32_t textureWidth = (int32_t)(ceilf(aPlacement->width * aPlacement->density));
   int32_t textureHeight = (int32_t)(ceilf(aPlacement->height * aPlacement->density));
 
+  const float aspect = (float)textureWidth / (float)textureHeight;
+  const float worldHeight = worldWidth / aspect;
+
   WidgetPtr widget;
-  VRLayerQuadPtr layer;
-  if (aPlacement->layer && m.device) {
-    layer = m.device->CreateLayerQuad(textureWidth, textureHeight,
-                                      VRLayerQuad::SurfaceType::AndroidSurface);
-    layer->SetCylinder(aPlacement->cylinder);
+  if (aPlacement->cylinder && m.device) {
+    VRLayerCylinderPtr layer = m.device->CreateLayerCylinder(textureWidth, textureHeight, VRLayerQuad::SurfaceType::AndroidSurface);
+    if (layer) {
+      CylinderPtr cylinder = Cylinder::Create(m.create, worldWidth, worldHeight, layer);
+      widget = Widget::Create(m.context, aHandle, textureWidth, textureHeight, cylinder);
+    }
   }
 
-  if (layer) {
-    widget = Widget::Create(m.context, aHandle, layer, worldWidth);
-  } else {
-    widget = Widget::Create(m.context, aHandle, textureWidth, textureHeight, worldWidth);
+  if (!widget) {
+    VRLayerQuadPtr layer;
+    if (aPlacement->layer && m.device) {
+      layer = m.device->CreateLayerQuad(textureWidth, textureHeight, VRLayerQuad::SurfaceType::AndroidSurface);
+    }
+
+    QuadPtr quad = Quad::Create(m.create, worldWidth, worldHeight, layer);
+    widget = Widget::Create(m.context, aHandle, textureWidth, textureHeight, quad);
   }
 
   if (aPlacement->opaque) {
@@ -841,6 +850,11 @@ BrowserWorld::LayoutWidget(int32_t aHandle) {
   }
 
   transform.TranslateInPlace(translation);
+  if (!parent) {
+    VRB_LOG("makelele translationA: %f %f %f", translation.x(), translation.y(), translation.z());
+    translation = transform.GetTranslation();
+    VRB_LOG("makelele translationB: %f %f %f", translation.x(), translation.y(), translation.z());
+  }
   widget->SetTransform(parent ? parent->GetTransform().PostMultiply(transform) : transform);
 }
 
@@ -1146,7 +1160,11 @@ BrowserWorld::DistanceToPlane(const vrb::NodePtr& aNode, const vrb::Vector& aPos
   vrb::Vector result;
   bool inside = false;
   float distance = -1.0f;
-  target->GetQuad()->TestIntersection(aPosition, aDirection, result, false, inside, distance);
+  if (target->GetQuad()) {
+    target->GetQuad()->TestIntersection(aPosition, aDirection, result, false, inside, distance);
+  } else if (target->GetCylinder()) {
+    target->GetCylinder()->TestIntersection(aPosition, aDirection, result, false, inside, distance);
+  }
   if (pointer) {
     distance-= 0.001f;
   }

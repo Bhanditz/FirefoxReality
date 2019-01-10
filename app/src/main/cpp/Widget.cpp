@@ -4,6 +4,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "Widget.h"
+#include "Cylinder.h"
 #include "Quad.h"
 #include "VRLayer.h"
 #include "VRBrowser.h"
@@ -30,7 +31,7 @@ struct Widget::State {
   std::string name;
   uint32_t handle;
   QuadPtr quad;
-  VRLayerQuadPtr layer;
+  CylinderPtr cylinder;
   vrb::TogglePtr root;
   vrb::TransformPtr transform;
   vrb::TextureSurfacePtr surface;
@@ -45,15 +46,20 @@ struct Widget::State {
       , toggleState(false)
   {}
 
-  void Initialize(const int aHandle, const vrb::Vector& aWindowMin, const vrb::Vector& aWindowMax,
-                  const int32_t aTextureWidth, const int32_t aTextureHeight, const VRLayerQuadPtr& aLayer) {
+  void Initialize(const int aHandle, const int32_t aTextureWidth, const int32_t aTextureHeight,
+                  const QuadPtr& aQuad, const CylinderPtr& aCylinder) {
     handle = aHandle;
     name = "crow::Widget-" + std::to_string(handle);
     vrb::RenderContextPtr render = context.lock();
     if (!render) {
       return;
     }
-    layer = aLayer;
+
+    quad = aQuad;
+    cylinder = aCylinder;
+
+    VRLayerPtr layer = GetLayer();
+
     if (layer) {
       layer->SetSurfaceChangedDelegate([=](const VRLayer& aLayer, VRLayer::SurfaceChange aChange, const std::function<void()>& aCallback) {
         const VRLayerQuad& layerQuad = static_cast<const VRLayerQuad&>(aLayer);
@@ -61,16 +67,19 @@ struct Widget::State {
       });
     } else {
       surface = vrb::TextureSurface::Create(render, name);
-    }
-    vrb::CreationContextPtr create = render->GetRenderThreadCreationContext();
-    quad = Quad::Create(create, aWindowMin, aWindowMax, layer);
-    if (surface) {
-      quad->SetTexture(surface, aTextureWidth, aTextureHeight);
-      quad->SetMaterial(vrb::Color(0.4f, 0.4f, 0.4f), vrb::Color(1.0f, 1.0f, 1.0f), vrb::Color(0.0f, 0.0f, 0.0f), 0.0f);
+      if (quad) {
+        quad->SetTexture(surface, aTextureWidth, aTextureHeight);
+        quad->SetMaterial(vrb::Color(0.4f, 0.4f, 0.4f), vrb::Color(1.0f, 1.0f, 1.0f), vrb::Color(0.0f, 0.0f, 0.0f), 0.0f);
+      }
     }
 
+    vrb::CreationContextPtr create = render->GetRenderThreadCreationContext();
     transform = vrb::Transform::Create(create);
-    transform->AddNode(quad->GetRoot());
+    if (quad) {
+      transform->AddNode(quad->GetRoot());
+    } else {
+      transform->AddNode(cylinder->GetRoot());
+    }
     root = vrb::Toggle::Create(create);
     root->AddNode(transform);
 
@@ -88,34 +97,25 @@ struct Widget::State {
     }
     return placement->firstDraw;
   }
+
+  const VRLayerSurfacePtr GetLayer() {
+    return quad ? (VRLayerSurfacePtr) quad->GetLayer() : cylinder->GetLayer();
+  }
 };
 
 WidgetPtr
-Widget::Create(vrb::RenderContextPtr& aContext, const int aHandle, const int32_t aWidth, const int32_t aHeight, float aWorldWidth) {
+Widget::Create(vrb::RenderContextPtr& aContext, const int aHandle,
+               const int32_t aTextureWidth, const int32_t aTextureHeight,const QuadPtr& aQuad) {
   WidgetPtr result = std::make_shared<vrb::ConcreteClass<Widget, Widget::State> >(aContext);
-  const float aspect = (float)aWidth / (float)aHeight;
-  const float worldHeight = aWorldWidth / aspect;
-  vrb::Vector windowMin(-aWorldWidth * 0.5f, -worldHeight * 0.5f, 0.0f);
-  vrb::Vector windowMax(aWorldWidth *0.5f, worldHeight * 0.5f, 0.0f);
-  result->m.Initialize(aHandle, windowMin, windowMax, aWidth, aHeight, nullptr);
+  result->m.Initialize(aHandle, aTextureWidth, aTextureHeight, aQuad, nullptr);
   return result;
 }
 
 WidgetPtr
-Widget::Create(vrb::RenderContextPtr& aContext, const int aHandle, const VRLayerQuadPtr& aLayer, float aWorldWidth) {
+Widget::Create(vrb::RenderContextPtr& aContext, const int aHandle,
+               const int32_t aTextureWidth, const int32_t aTextureHeight, const CylinderPtr& aCylinder) {
   WidgetPtr result = std::make_shared<vrb::ConcreteClass<Widget, Widget::State> >(aContext);
-  const float aspect = (float)aLayer->GetWidth() / (float)aLayer->GetHeight();
-  const float worldHeight = aWorldWidth / aspect;
-  vrb::Vector windowMin(-aWorldWidth * 0.5f, -worldHeight * 0.5f, 0.0f);
-  vrb::Vector windowMax(aWorldWidth *0.5f, worldHeight * 0.5f, 0.0f);
-  result->m.Initialize(aHandle, windowMin, windowMax, aLayer->GetWidth(), aLayer->GetHeight(), aLayer);
-  return result;
-}
-
-WidgetPtr
-Widget::Create(vrb::RenderContextPtr& aContext, const int aHandle, const int32_t aWidth, const int32_t aHeight, const vrb::Vector& aMin, const vrb::Vector& aMax) {
-  WidgetPtr result = std::make_shared<vrb::ConcreteClass<Widget, Widget::State> >(aContext);
-  result->m.Initialize(aHandle, aMin, aMax, aWidth, aHeight, nullptr);
+  result->m.Initialize(aHandle, aTextureWidth, aTextureHeight, nullptr, aCylinder);
   return result;
 }
 
@@ -146,26 +146,42 @@ Widget::GetSurfaceTexture() const {
 
 void
 Widget::GetSurfaceTextureSize(int32_t& aWidth, int32_t& aHeight) const {
-  m.quad->GetTextureSize(aWidth, aHeight);
+  if (m.quad) {
+    m.quad->GetTextureSize(aWidth, aHeight);
+  } else {
+    m.cylinder->GetTextureSize(aWidth, aHeight);
+  }
 }
 
 void
 Widget::SetSurfaceTextureSize(int32_t aWidth, int32_t aHeight) {
-  m.quad->SetTextureSize(aWidth, aHeight);
+  if (m.quad) {
+    m.quad->SetTextureSize(aWidth, aHeight);
+  } else {
+    m.cylinder->SetTextureSize(aWidth, aHeight);
+  }
 }
 
 void
 Widget::GetWidgetMinAndMax(vrb::Vector& aMin, vrb::Vector& aMax) const {
-  m.quad->GetWorldMinAndMax(aMin, aMax);
+  if (m.quad) {
+    m.quad->GetWorldMinAndMax(aMin, aMax);
+  } else {
+    m.cylinder->GetWorldMinAndMax(aMin, aMax);
+  }
 }
 
 void
 Widget::SetWorldWidth(float aWorldWidth) const {
   int32_t width, height;
-  m.quad->GetTextureSize(width, height);
+  this->GetSurfaceTextureSize(width, height);
   const float aspect = (float)width / (float) height;
   const float worldHeight = aWorldWidth / aspect;
-  m.quad->SetWorldSize(aWorldWidth, worldHeight);
+  if (m.quad) {
+    m.quad->SetWorldSize(aWorldWidth, worldHeight);
+  } else {
+    m.cylinder->SetWorldSize(aWorldWidth, worldHeight);
+  }
   if (m.resizing && m.resizer) {
     vrb::Vector min(-aWorldWidth * 0.5f, -worldHeight * 0.5f, 0.0f);
     vrb::Vector max(aWorldWidth *0.5f, worldHeight * 0.5f, 0.0f);
@@ -175,7 +191,11 @@ Widget::SetWorldWidth(float aWorldWidth) const {
 
 void
 Widget::GetWorldSize(float& aWidth, float& aHeight) const {
-  m.quad->GetWorldSize(aWidth, aHeight);
+  if (m.quad) {
+    m.quad->GetWorldSize(aWidth, aHeight);
+  } else {
+    m.cylinder->GetWorldSize(aWidth, aHeight);
+  }
 }
 
 bool
@@ -186,7 +206,12 @@ Widget::TestControllerIntersection(const vrb::Vector& aStartPoint, const vrb::Ve
   }
 
   bool clamp = !m.resizing;
-  bool result = m.quad->TestIntersection(aStartPoint, aDirection, aResult, clamp, aIsInWidget, aDistance);
+  bool result = false;
+  if (m.quad) {
+    result = m.quad->TestIntersection(aStartPoint, aDirection, aResult, clamp, aIsInWidget, aDistance);
+  } else {
+    result = m.cylinder->TestIntersection(aStartPoint, aDirection, aResult, clamp, aIsInWidget, aDistance);
+  }
   if (result && m.resizing && !aIsInWidget) {
     // Handle extra intersections while resizing
     aIsInWidget = m.resizer->TestIntersection(aResult);
@@ -198,7 +223,11 @@ Widget::TestControllerIntersection(const vrb::Vector& aStartPoint, const vrb::Ve
 void
 Widget::ConvertToWidgetCoordinates(const vrb::Vector& point, float& aX, float& aY) const {
   bool clamp = !m.resizing;
-  m.quad->ConvertToQuadCoordinates(point, aX, aY, clamp);
+  if (m.quad) {
+    m.quad->ConvertToQuadCoordinates(point, aX, aY, clamp);
+  } else {
+    m.cylinder->ConvertToQuadCoordinates(point, aX, aY, clamp);
+  }
 }
 
 void
@@ -238,9 +267,14 @@ Widget::GetQuad() const {
   return m.quad;
 }
 
-const VRLayerQuadPtr&
+CylinderPtr
+Widget::GetCylinder() const {
+  return m.cylinder;
+}
+
+VRLayerSurfacePtr
 Widget::GetLayer() const {
-  return m.layer;
+  return m.GetLayer();
 }
 
 vrb::TransformPtr
@@ -259,25 +293,33 @@ Widget::SetPlacement(const WidgetPlacementPtr& aPlacement) {
       m.root->ToggleAll(m.toggleState);
   }
   m.placement = aPlacement;
+  VRLayerSurfacePtr layer = GetLayer();
+  if (layer) {
+    layer->SetPixelDensity(aPlacement->density);
+  }
 }
 
 void
 Widget::StartResize() {
+  vrb::Vector worldMin, worldMax;
+  GetWidgetMinAndMax(worldMin, worldMax);
   if (m.resizer) {
-    m.resizer->SetSize(m.quad->GetWorldMin(), m.quad->GetWorldMax());
+    m.resizer->SetSize(worldMin, worldMax);
   } else {
     vrb::RenderContextPtr render = m.context.lock();
     if (!render) {
       return;
     }
     vrb::CreationContextPtr create = render->GetRenderThreadCreationContext();
-    m.resizer = WidgetResizer::Create(create, m.quad->GetWorldMin(), m.quad->GetWorldMax());
+    m.resizer = WidgetResizer::Create(create, worldMin, worldMax);
     m.transform->InsertNode(m.resizer->GetRoot(), 0);
   }
   m.resizing = true;
   m.resizer->ToggleVisible(true);
-  m.quad->SetScaleMode(Quad::ScaleMode::AspectFit);
-  m.quad->SetBackgroundColor(vrb::Color(1.0f, 1.0f, 1.0f, 1.0f));
+  if (m.quad) {
+    m.quad->SetScaleMode(Quad::ScaleMode::AspectFit);
+    m.quad->SetBackgroundColor(vrb::Color(1.0f, 1.0f, 1.0f, 1.0f));
+  }
 }
 
 void
@@ -287,8 +329,10 @@ Widget::FinishResize() {
   }
   m.resizing = false;
   m.resizer->ToggleVisible(false);
-  m.quad->SetScaleMode(Quad::ScaleMode::Fill);
-  m.quad->SetBackgroundColor(vrb::Color(0.0f, 0.0f, 0.0f, 0.0f));
+  if (m.quad) {
+    m.quad->SetScaleMode(Quad::ScaleMode::Fill);
+    m.quad->SetBackgroundColor(vrb::Color(0.0f, 0.0f, 0.0f, 0.0f));
+  }
 }
 
 bool
@@ -300,7 +344,11 @@ void
 Widget::HandleResize(const vrb::Vector& aPoint, bool aPressed, bool& aResized, bool &aResizeEnded) {
   m.resizer->HandleResizeGestures(aPoint, aPressed, aResized, aResizeEnded);
   if (aResized || aResizeEnded) {
-    m.quad->SetWorldSize(m.resizer->GetCurrentMin(), m.resizer->GetCurrentMax());
+    if (m.quad) {
+      m.quad->SetWorldSize(m.resizer->GetCurrentMin(), m.resizer->GetCurrentMax());
+    } else {
+      m.cylinder->SetWorldSize(m.resizer->GetCurrentMin(), m.resizer->GetCurrentMax());
+    }
   }
 }
 
